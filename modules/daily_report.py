@@ -230,13 +230,14 @@ def generate_html_report(report_pie, num_clickthroughs, num_purchases,
     
     return
 
-mydb = mysql.connector.connect(host="localhost",
-                               user="root",
-                               password="Tt556677",
-                               database = "timsshoes",
-                               connection_timeout = 28800
-                               )    
-mycursor = mydb.cursor()
-
-test_date = datetime.strptime('2020-06-03', "%Y-%m-%d")
-produce_daily_report(mycursor, test_date)
+if __name__ == "__main__":
+    mydb = mysql.connector.connect(host="localhost",
+                                   user="root",
+                                   password="Tt556677",
+                                   database = "timsshoes",
+                                   connection_timeout = 28800
+                                   )    
+    mycursor = mydb.cursor()
+    
+    test_date = datetime.strptime('2020-06-03', "%Y-%m-%d")
+    produce_daily_report(mycursor, test_date)

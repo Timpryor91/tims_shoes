@@ -8,14 +8,14 @@ import matplotlib.dates as mdates
 import mysql.connector
 from datetime import datetime, timedelta, date
 
-def produce_customer_growth_report(mycursor, camp_start_date, camp_end_date):
+def produce_shoe_club_growth_report(mycursor, camp_start_date, camp_end_date):
     """
-    Produces a html report summarizing customer growth trends achieved by a 
+    Produces a html report summarizing shoe club membership growth trends achieved by a 
     marketing campaign
     
     Parameters:
         mycursor (MySQL Cursor): a cursor to perform database operations from Python
-        camp_start_date (datetime): the date that the marketing campaign went live
+        camp_start_date (datetime): the date that the marketing campaign started
         camp_end_date (datetime): the date that the marketing campaign finished
         
     Returns:
@@ -31,58 +31,60 @@ def produce_customer_growth_report(mycursor, camp_start_date, camp_end_date):
     plot_end_date = camp_end_date + timedelta(days = day_range)
     plot_end_date_string = datetime.strftime(plot_end_date, "%Y-%m-%d")
     
-    # Determine the number of customers registered before the plot start date
+    # Determine the number of members at the plot start date
     mycursor.execute('''SELECT
                             COUNT(customer_id)
                         FROM
                             customers
                         WHERE
-                            signup_date < "''' + plot_start_date_string + '''"
+                            shoe_club_signup_date < "''' + plot_start_date_string + '''"
+                        AND
+                            shoe_club_status = "Active"    
                      ''')
-    initial_customers = mycursor.fetchall()[0][0]
+    initial_members = mycursor.fetchall()[0][0]
     
     # Determine number of new customers added each day in the period of interest
     mycursor.execute('''SELECT 
-                            signup_date,
+                            shoe_club_signup_date,
                             COUNT(customer_id) 
                         FROM 
                   	        customers 
                         WHERE 
-                            signup_date >= "''' + plot_start_date_string + '''" 
+                            shoe_club_signup_date >= "''' + plot_start_date_string + '''" 
                         AND 
-                            signup_date <= "''' + plot_end_date_string + '''" 
+                            shoe_club_signup_date <= "''' + plot_end_date_string + '''" 
                         GROUP BY 
-                            signup_date 
+                            shoe_club_signup_date 
                         ORDER BY 
-                            signup_date''')
-    daily_customers = mycursor.fetchall()
+                            shoe_club_signup_date''')
+    daily_members = mycursor.fetchall()
     
     # Construct a dictionary with the total number of customers on each day of the period of interest
-    daily_customer_dict = {}
-    for day in daily_customers:
+    daily_members_dict = {}
+    for day in daily_members:
         if (day[0] == plot_start_date.date()):
-            daily_customer_dict[day[0]] = day[1] + initial_customers
+            daily_members_dict[day[0]] = day[1] + initial_members
         else:
-            daily_customer_dict[day[0]] = day[1] + daily_customer_dict[day[0] - timedelta(days = 1)]
+            daily_members_dict[day[0]] = day[1] + daily_members_dict[day[0] - timedelta(days = 1)]
     
     # Determine average number of customers added during campaign
-    avg_camp_new_custs = (daily_customer_dict[camp_end_date.date()] - 
-                          daily_customer_dict[camp_start_date.date()]) / campaign_length
+    avg_camp_new_membs = (daily_members_dict[camp_end_date.date()] - 
+                          daily_members_dict[camp_start_date.date()]) / campaign_length
     
     # Determine average number of customers added in periods surrounding campaign
-    pre_camp_new_custs = (daily_customer_dict[camp_start_date.date() - timedelta(days = 1)] 
-                          - daily_customer_dict[plot_start_date.date()]) / day_range
-    post_camp_new_custs = (daily_customer_dict[plot_end_date.date()] 
-                          - daily_customer_dict[camp_end_date.date() + timedelta(days = 1)]) / day_range
+    pre_camp_new_membs = (daily_members_dict[camp_start_date.date() - timedelta(days = 1)] 
+                          - daily_members_dict[plot_start_date.date()]) / day_range
+    post_camp_new_membs = (daily_members_dict[plot_end_date.date()] 
+                          - daily_members_dict[camp_end_date.date() + timedelta(days = 1)]) / day_range
     
-    avg_non_camp_new_custs = (pre_camp_new_custs + post_camp_new_custs)/2
+    avg_non_camp_new_membs = (pre_camp_new_membs + post_camp_new_membs)/2
     
     # Create a plot showing the growth of customers in the period of interest
-    plot_name = "customer_growth_plots.png"
-    create_growth_plot(daily_customer_dict, plot_name, camp_start_date, camp_end_date)
+    plot_name = "shoe_club_growth_plots.png"
+    create_growth_plot(daily_members_dict, plot_name, camp_start_date, camp_end_date)
     
     # Generate HTML report summarizing results
-    generate_html_report(avg_camp_new_custs, avg_non_camp_new_custs, plot_name)
+    generate_html_report(avg_camp_new_membs, avg_non_camp_new_membs, plot_name)
             
     return
 
@@ -151,7 +153,7 @@ def generate_html_report(avg_camp_new_custs, avg_non_camp_new_custs, plot_name):
                      <body>
                          <div class = "topdiv">
                              <h1>Tim's Shoes</h1>
-                             <p>Customer Growth Campaign Report: ''' + str(camp_start_date.date()) + ''' - 
+                             <p>Shoe Club Growth Campaign Report: ''' + str(camp_start_date.date()) + ''' - 
                              ''' + str(camp_end_date.date()) + '''<p>
                          </div>
                          <div>
@@ -160,8 +162,8 @@ def generate_html_report(avg_camp_new_custs, avg_non_camp_new_custs, plot_name):
                                  <col style="width:50%">
             	                 <col style="width:50%">
                                  <tr>
-                                     <th>CUSTOMERS ADDED DURING CAMPAIGN</th>
-                                     <th>CUSTOMERS ADDED OUTSIDE OF CAMPAIGN</th>
+                                     <th>MEMBERS ADDED DURING CAMPAIGN</th>
+                                     <th>MEMBERS ADDED OUTSIDE OF CAMPAIGN</th>
                                  </tr>                     
                                  <tr>
                                      <td>''' + str(round(avg_camp_new_custs,2)) + ''' cust/day</td>
@@ -212,26 +214,26 @@ def generate_html_report(avg_camp_new_custs, avg_non_camp_new_custs, plot_name):
                   display: block;
                   margin-left: auto; 
                   margin-right: auto;
-                  width: 23%;
+                  width: 30%;
                 }
                 
                 '''
     
     css_file = open("growth_test_styles.css", "w")
     css_file.write(css_string)
-    html_file = open("customer_growth_report.html", "w")
+    html_file = open("shoe_club_growth_report.html", "w")
     html_file.write(html_string)
     
     return
 
-
-mydb = mysql.connector.connect(host="localhost",
-                               user="root",
-                               password="Tt556677",
-                               database = "timsshoes",
-                               connection_timeout = 28800
-                               )    
-mycursor = mydb.cursor()
-camp_start_date = datetime.strptime('2020-06-29', "%Y-%m-%d")
-camp_end_date = camp_start_date + timedelta(days = 30)
-produce_customer_growth_report(mycursor, camp_start_date, camp_end_date)
+if __name__ == "__main__":
+    mydb = mysql.connector.connect(host="localhost",
+                                   user="root",
+                                   password="Tt556677",
+                                   database = "timsshoes",
+                                   connection_timeout = 28800
+                                   )    
+    mycursor = mydb.cursor()
+    camp_start_date = datetime.strptime('2020-01-01', "%Y-%m-%d")
+    camp_end_date = camp_start_date + timedelta(days = 30)
+    produce_shoe_club_growth_report(mycursor, camp_start_date, camp_end_date)

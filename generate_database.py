@@ -8,7 +8,6 @@ import mysql.connector
 from datetime import datetime
 
 from modules.initiate_tables import initiate_base_tables
-from classes.customer_class import CustomerTable
 from classes.event_class import EventsTable
 from classes.item_class import ItemTable
 
@@ -23,21 +22,20 @@ if __name__ == "__main__":
                                    )
         
     mycursor = mydb.cursor()
-        
+    
+    # mycursor.execute('''DROP TABLE customers, events, items''')
+    
     # Initate tables for database
     initiate_base_tables(mycursor)
     
     # Date of business launch
-    start_date = datetime.strptime("2020-01-01", "%Y-%m-%d")
-     
-    # Populate customers table
-    customer_table = CustomerTable(mycursor, 20000, start_date)    
-                     
+    start_date = datetime.strptime("2018-01-01", "%Y-%m-%d")
+                         
     # Populate items table
     item_table = ItemTable(mycursor)
     
     # Populate events table
-    events_table = EventsTable(mycursor, start_date, customer_table)
+    events_table = EventsTable(mycursor, start_date)
     
     # Save additions to MySQL database
     mydb.commit()

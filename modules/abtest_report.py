@@ -6,24 +6,25 @@
 import matplotlib.pyplot as plt
 import scipy.stats as scs
 import mysql.connector
-from datetime import datetime, timedelta
 
-def produce_abtest_report(mycursor, test_start_date, test_end_date):
+def produce_abtest_report(mycursor, test_name):
     """
     Produces a html report summarizing the results of an A/B test
     
     Parameters:
         mycursor (MySQL Cursor): a cursor to perform database operations from Python
-        test_start_date (datetime): the date that the A/B test of interest started on
-        test_end_date (datetime): the date that the A/B test of interest finished
+        test_name (string): the name of the A/B test, referenced in the database
         
     Returns:
         None
     
     """
+    # mycursor.execute('''DROP TABLE ab_test_summary''')    
+    
+    control_string = test_name + "_control"
+    test_string = test_name + "_test"
+    
     # Create a temporary table to store data for querying
-    start_date_string = datetime.strftime(test_start_date, "%Y-%m-%d")
-    end_date_string = datetime.strftime(test_end_date, "%Y-%m-%d")
     mycursor.execute('''CREATE TABLE ab_test_summary AS 
                           SELECT 
                     	      event_date, 
@@ -35,68 +36,60 @@ def produce_abtest_report(mycursor, test_start_date, test_end_date):
                           FROM 
                     	     events 
                           WHERE 
-                    	     event_date >= '" + start_date_string + "' 
-                          AND 
-                             event_date <= "''' + end_date_string + '''"''')
-    
-    # Test name
+                    	     ab_test_notes = "''' + test_string + '''"  
+                          OR
+                             ab_test_notes = "''' + control_string + '''"''')
+         
+    # Total control group clickthroughs during test
     mycursor.execute('''SELECT 
-                          ab_test_notes 
-                      FROM 
-                          ab_test_summary 
-                      WHERE 
-                          ab_test_notes != '' 
-                      LIMIT 1''')
-    test_name = mycursor.fetchall()[0][0]   
-    
-    # Total clickthroughs during test
-    mycursor.execute('''SELECT 
-                          COUNT(event_date) 
-                      FROM 
-                          ab_test_summary 
-                      WHERE 
-                          event_type = "clickthrough"''')
-    num_tot_clickthroughs = mycursor.fetchall()[0][0]
+                            COUNT(event_date) 
+                        FROM 
+                            ab_test_summary 
+                        WHERE 
+                            event_type = "clickthrough"
+                        AND
+                            ab_test_notes = "''' + control_string + '''"''')                           
+    num_control_clickthroughs = mycursor.fetchall()[0][0]
 
-    # Total clickthroughs for users exposed to A/B test
+    # Total test group clickthroughs during test
     mycursor.execute('''SELECT 
-                          COUNT(event_date) 
-                      FROM 
-                          ab_test_summary 
-                      WHERE 
-                          event_type = 'clickthrough' 
-                      AND 
-                          ab_test_notes != ""''')
+                            COUNT(event_date) 
+                        FROM 
+                            ab_test_summary 
+                        WHERE 
+                            event_type = "clickthrough"
+                        AND
+                            ab_test_notes = "''' + test_string + '''"''')
     num_test_clickthroughs = mycursor.fetchall()[0][0]
-    num_nontest_clickthroughs = num_tot_clickthroughs - num_test_clickthroughs
     
-    # Total purchases during test
+    # Total control group purchases during test
     mycursor.execute('''SELECT 
-                          COUNT(event_date) 
-                      FROM 
-                          ab_test_summary 
-                      WHERE 
-                          event_type = "purchase"''')
-    num_tot_purchases = mycursor.fetchall()[0][0]    
+                            COUNT(event_date) 
+                        FROM 
+                            ab_test_summary 
+                        WHERE 
+                            event_type = "purchase"
+                        AND
+                            ab_test_notes = "''' + control_string + '''"''')  
+    num_control_purchases = mycursor.fetchall()[0][0]    
      
-    # Total purchases for users exposed to A/B test
-    mycursor.execute('''SELECT \
-                          COUNT(event_date) 
-                      FROM 
-                          ab_test_summary 
-                      WHERE 
-                          event_type = 'purchase' 
-                      AND 
-                          ab_test_notes != ""''')
+    # Total test group purchases during test
+    mycursor.execute('''SELECT 
+                            COUNT(event_date) 
+                        FROM 
+                            ab_test_summary 
+                        WHERE 
+                            event_type = "purchase"
+                        AND
+                            ab_test_notes = "''' + test_string + '''"''')  
     num_test_purchases = mycursor.fetchall()[0][0]                   
-    num_nontest_purchases = num_tot_purchases - num_test_purchases
     
     # Calculate test statistics
     # Refer to https://en.wikipedia.org/wiki/Statistical_hypothesis_testing
-    pA = num_nontest_purchases / num_nontest_clickthroughs
+    pA = num_control_purchases / num_control_clickthroughs
     pB = num_test_purchases / num_test_clickthroughs
-    nA = num_test_clickthroughs
-    nB = num_nontest_clickthroughs
+    nA = num_control_clickthroughs
+    nB = num_test_clickthroughs
     p_hat = (nA*pA + nB*pB)/(nA + nB) 
     z = (pA - pB)/(p_hat*(1-p_hat)*((1/nA) + (1/nB)))**0.5
     
@@ -209,7 +202,7 @@ def generate_html_report(pA, pB, nA, nB, z, test_outcome, test_name, plot_name):
                                  <col style="width:50%">
             	                 <col style="width:50%">
                                  <tr>
-                                     <th>CONTROL GROUP TEST SAMPLE SIZE</th>
+                                     <th>CONTROL GROUP SAMPLE SIZE</th>
                                      <th>TEST GROUP SAMPLE SIZE</th>
                                  </tr>                     
                                  <tr>
@@ -225,8 +218,8 @@ def generate_html_report(pA, pB, nA, nB, z, test_outcome, test_name, plot_name):
                                      <th>TEST GROUP CONVERSION RATE</th>
                                  </tr>                     
                                  <tr>
-                                     <td>''' + str(round(pA,4)) + '''%</td>
-                                     <td>''' + str(round(pB,4)) + '''%</td>
+                                     <td>''' + str(round(100*pA,1)) + '''%</td>
+                                     <td>''' + str(round(100*pB,1)) + '''%</td>
                                  </tr>
                              </table>
                              <table class = "summarytable">
@@ -244,7 +237,7 @@ def generate_html_report(pA, pB, nA, nB, z, test_outcome, test_name, plot_name):
                          </div>
                          <div class = "figure">
                              <img src = "''' + plot_name + '''" alt = "Dist Chart" 
-                             style= "width:1000px;height:500px;">
+                             style= "width:800px;height:500px;">
                          </div>
                      </body>
                  </html> 
@@ -283,7 +276,7 @@ def generate_html_report(pA, pB, nA, nB, z, test_outcome, test_name, plot_name):
                   display: block;
                   margin-left: auto; 
                   margin-right: auto;
-                  width: 23%;
+                  width: 45%;
                 }
                 
                 '''
@@ -295,16 +288,13 @@ def generate_html_report(pA, pB, nA, nB, z, test_outcome, test_name, plot_name):
     
     return
 
-
-mydb = mysql.connector.connect(host="localhost",
-                               user="root",
-                               password="Tt556677",
-                               database = "timsshoes",
-                               connection_timeout = 28800
-                               )    
-mycursor = mydb.cursor()
-
-test_start_date = datetime.strptime('2020-08-01', "%Y-%m-%d")
-test_end_date = test_start_date + timedelta(days = 30)
-
-produce_abtest_report(mycursor, test_start_date, test_end_date)
+if __name__ == "__main__":
+    mydb = mysql.connector.connect(host="localhost",
+                                   user="root",
+                                   password="Tt556677",
+                                   database = "timsshoes",
+                                   connection_timeout = 28800
+                                   )    
+    mycursor = mydb.cursor()
+    
+    produce_abtest_report(mycursor, "Test_50")
